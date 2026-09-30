@@ -49,7 +49,11 @@ async def test_recognize_passes_image_on_stdin(tmp_path: Path) -> None:
     output = json.loads(await engine.recognize(b"\x89PNG-image"))
     assert output["argv"] == ["stdin", "stdout", "-l", "eng+deu", "--psm", "3"]
     assert output["size"] == len(b"\x89PNG-image")
-    assert set(output["env"]) <= {"PATH", "SYSTEMROOT", "TESSDATA_PREFIX", "OMP_THREAD_LIMIT"}
+    allowed = {"PATH", "SYSTEMROOT", "TESSDATA_PREFIX", "OMP_THREAD_LIMIT"}
+    assert set(OcrEngine._environment()) <= allowed
+    # The fake is itself a Python interpreter: started under the C locale it sets LC_CTYPE for
+    # itself (PEP 538 locale coercion), so that one name comes from the fake, not from us.
+    assert set(output["env"]) - {"LC_CTYPE"} <= allowed
 
 
 async def test_failures_raise_ocr_error(tmp_path: Path) -> None:
