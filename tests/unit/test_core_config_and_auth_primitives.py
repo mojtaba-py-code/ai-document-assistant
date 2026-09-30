@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import secrets
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import fakeredis
@@ -163,6 +164,22 @@ async def test_rate_limiter_falls_back_when_redis_down() -> None:
     await limiter.enforce("x", "id", rule)
     with pytest.raises(RateLimited):
         await limiter.enforce("x", "id", rule)  # still limited: no fail-open
+
+
+async def test_local_rate_limiter_admits_a_new_key_at_any_clock_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # At this reading a float clock made `now + emission - tolerance` round above `now`, so a
+    # new key's first request was rejected (about 0.2% of readings for a one-request rule).
+    seconds = 1024.074115
+    clock = SimpleNamespace(monotonic=lambda: seconds, monotonic_ns=lambda: int(seconds * 1e9))
+    monkeypatch.setattr("docassist.cache.ratelimit.time", clock)
+    limiter = RateLimiter(None, "t")
+    rule = RateRule(requests=1, per_seconds=3600)
+    await limiter.enforce("llm_org", "org-a", rule)
+    await limiter.enforce("llm_org", "org-b", rule)
+    with pytest.raises(RateLimited):
+        await limiter.enforce("llm_org", "org-a", rule)
 
 
 async def test_rate_limiter_disabled() -> None:

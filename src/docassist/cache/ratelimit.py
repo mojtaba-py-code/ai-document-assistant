@@ -56,13 +56,15 @@ def _params(rule: RateRule) -> tuple[int, int]:
 
 class _LocalGcra:
     def __init__(self, max_keys: int = 50_000) -> None:
-        self._tat: dict[str, float] = {}
+        self._tat: dict[str, int] = {}
         self._max_keys = max_keys
         self._lock = asyncio.Lock()
 
     async def hit(self, key: str, rule: RateRule) -> Decision:
         emission_us, tolerance_us = _params(rule)
-        now = time.monotonic() * 1_000_000
+        # Integer microseconds, as in the Lua script: with a float clock, a new key's
+        # `now + emission - tolerance` can round above `now` and reject its first request.
+        now = time.monotonic_ns() // 1_000
         async with self._lock:
             if len(self._tat) > self._max_keys:
                 cutoff = now
