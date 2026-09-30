@@ -213,6 +213,9 @@ jobs:
             VCS_REF=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # The runtime stage runs `apt-get upgrade`: restored from the cache, that layer would
+          # replay the packages of its first build and never pick up a later security fix.
+          no-cache-filters: runtime
       - name: Image policy (non-root, health check, no pip, CLI starts)
         run: |
           test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")" = "10001:10001"

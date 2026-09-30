@@ -652,6 +652,15 @@ def test_ci_covers_the_required_gates() -> None:
     assert {"3.12", "3.13"} <= set(matrix)
 
 
+def test_image_gets_os_security_fixes_that_the_ci_cache_cannot_replay() -> None:
+    runtime = DOCKERFILE.split(" AS runtime", 1)[1]
+    assert "apt-get upgrade -y" in runtime, "Debian fixes newer than the pinned base image"
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    steps = ci["jobs"]["container"]["steps"]
+    build = next(s for s in steps if str(s.get("uses", "")).startswith("docker/build-push"))
+    assert build["with"]["no-cache-filters"] == "runtime"
+
+
 # --------------------------------------------------------------------------------------- #
 # .env.example and .gitignore
 # --------------------------------------------------------------------------------------- #

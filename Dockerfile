@@ -84,14 +84,17 @@ LABEL org.opencontainers.image.title="AI Document Assistant" \
       org.opencontainers.image.documentation="https://github.com/mojtaba-py-code/ai-document-assistant/tree/main/docs" \
       org.opencontainers.image.base.name="docker.io/library/python:3.12-slim-bookworm"
 
-# OCR (optional) is the only package installed on top of the base image. Then: a dedicated
+# `apt-get upgrade` applies the Debian security fixes published since the pinned base image
+# was built (CI never restores this stage from its cache, so each build gets them). OCR
+# (optional) is the only package installed on top of the base image. Then: a dedicated
 # unprivileged user, the state directory, no pip in the runtime, no setuid/setgid binaries.
 RUN set -eu; \
+    apt-get update; \
+    apt-get upgrade -y --no-install-recommends; \
     if [ "$WITH_OCR" = "true" ]; then \
-        apt-get update; \
         apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng; \
-        rm -rf /var/lib/apt/lists/*; \
     fi; \
+    rm -rf /var/lib/apt/lists/*; \
     groupadd --system --gid 10001 docassist; \
     useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --no-create-home \
         --shell /usr/sbin/nologin docassist; \
