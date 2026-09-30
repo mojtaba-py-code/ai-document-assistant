@@ -1,0 +1,35 @@
+# Optional (Gateway API): route the public host to the API Service through an existing
+# HTTPS Gateway. Not in kustomization.yaml because the Gateway is cluster-specific:
+#   kubectl -n docassist apply -f deployment/kubernetes/httproute.yaml
+# TLS termination, HSTS, request-size and rate limits belong on the Gateway/proxy (see
+# deployment/nginx/docassist.conf for the values docassist expects).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: docassist
+  namespace: docassist
+  labels:
+    app.kubernetes.io/name: docassist
+spec:
+  parentRefs:
+    - name: public-https # REPLACE with your Gateway
+      namespace: gateway-system # REPLACE
+      sectionName: https
+  hostnames:
+    - docs.example.com # REPLACE
+  rules:
+    # Metrics are scraped in-cluster only.
+    - matches:
+        - path: { type: Exact, value: /metrics }
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path: { type: ReplaceFullPath, replaceFullPath: / }
+            statusCode: 302
+    - matches:
+        - path: { type: PathPrefix, value: / }
+      backendRefs:
+        - name: docassist-api
+          port: 80
+      timeouts:
+        request: 180s

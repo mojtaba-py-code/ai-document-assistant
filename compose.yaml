@@ -1,0 +1,410 @@
+# AI Document Assistant - single-host deployment with Docker Compose.
+#
+#   scripts/generate-secrets.sh          # once: deployment/secrets/* (gitignored, never printed)
+#   docker compose up -d --build         # postgres + redis -> migrate -> api + worker
+#   docker compose exec api docassist create-platform-admin --email you@example.com --name "You"
+#   open http://127.0.0.1:8000
+#
+# The default stack runs DOCASSIST_ENVIRONMENT=development with the OFFLINE AI providers
+# (local_extractive answers, hashing embeddings), so it works without any API key and no
+# document text leaves the host. Variants are override files (combinable):
+#
+#   -f deployment/compose/anthropic.yaml    Claude via the Anthropic API (needs anthropic_api_key)
+#   -f deployment/compose/qdrant.yaml       Qdrant vector store instead of pgvector
+#   -f deployment/compose/clamav.yaml       ClamAV malware scanning of uploads
+#   -f deployment/compose/ollama.yaml       local LLM for data above the external ceiling
+#   -f deployment/compose/production.yaml   production-safe settings (TLS to PostgreSQL,
+#                                            ClamAV, external AI, docs off, HSTS)
+#   e.g. docker compose -f compose.yaml -f deployment/compose/qdrant.yaml up -d
+#
+# Hardening applied to every docassist container (api, worker, migrate): read-only root
+# filesystem, /tmp as a size-limited noexec tmpfs, all Linux capabilities dropped,
+# no-new-privileges, fixed non-root uid 10001, pids/memory/CPU limits, secrets only as files
+# (DOCASSIST_*_FILE -> /run/secrets/*), never as environment values.
+#
+# Networks: "edge" carries only the published API port; "backend" is internal (no route
+# out of the host) and holds the data stores; "egress" is the only way out: the api and
+# worker (LLM / embedding APIs), plus clamav (signature updates) and the one-shot model
+# download of the ollama profile. PostgreSQL and Redis publish no port.
+#
+# The refresh cookie keeps its Secure flag (DOCASSIST_SECURITY__COOKIE_SECURE defaults to true);
+# browsers accept it on http://localhost, a "potentially trustworthy" origin, so open the UI as
+# localhost/127.0.0.1, or behind TLS.
+
+name: docassist
+
+x-docassist-image: &docassist-image
+  image: ${DOCASSIST_IMAGE:-docassist:1.0.0}
+  build:
+    context: .
+    args:
+      WITH_OCR: ${DOCASSIST_WITH_OCR:-false}
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  user: "10001:10001"
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+# Settings shared by the api and the worker. Everything secret is a *_FILE reference.
+x-app-environment: &app-environment
+  DOCASSIST_ENVIRONMENT: development
+  DOCASSIST_PUBLIC_BASE_URL: http://localhost:8000
+  # 127.0.0.1 must stay listed: the container health check calls http://127.0.0.1:8000.
+  DOCASSIST_SECURITY__ALLOWED_HOSTS: '["localhost","127.0.0.1"]'
+  DOCASSIST_DATABASE__URL_FILE: /run/secrets/database_url
+  # The backend network is internal and never leaves the host; the production override
+  # switches this to "require" with a TLS-enabled PostgreSQL.
+  DOCASSIST_DATABASE__SSL: disable
+  DOCASSIST_REDIS__URL_FILE: /run/secrets/redis_url
+  DOCASSIST_SECURITY__JWT_SIGNING_KEY_FILE: /run/secrets/jwt_signing_key
+  DOCASSIST_SECURITY__TOKEN_PEPPER_FILE: /run/secrets/token_pepper
+  DOCASSIST_SECURITY__AUDIT_HMAC_KEY_FILE: /run/secrets/audit_hmac_key
+  DOCASSIST_SECURITY__ENCRYPTION_KEYS_FILE: /run/secrets/encryption_keys
+  DOCASSIST_SECURITY__ACTIVE_ENCRYPTION_KEY_ID_FILE: /run/secrets/encryption_key_id
+  DOCASSIST_SECURITY__METRICS_TOKEN_FILE: /run/secrets/metrics_token
+  DOCASSIST_STORAGE__ROOT: /var/lib/docassist/storage
+  DOCASSIST_LLM__PROVIDER: local_extractive
+  DOCASSIST_LLM__LOCAL_PROVIDER: local_extractive
+  DOCASSIST_EMBEDDING__PROVIDER: hashing
+  DOCASSIST_UPLOAD__MALWARE_SCANNER: none
+  # Compose service names of the optional local services (qdrant, ollama profiles); they only
+  # resolve when the profile runs, and nothing else on a private network is reachable.
+  DOCASSIST_OUTBOUND__PRIVATE_NETWORK_ALLOWLIST: '["qdrant","ollama"]'
+  DOCASSIST_OBSERVABILITY__LOG_FORMAT: json
+  DOCASSIST_OBSERVABILITY__LOG_LEVEL: INFO
+
+services:
+  # ---------------------------------------------------------------------------------------
+  # Data stores (backend network only, no published ports)
+  # ---------------------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    # Runs directly as the image's postgres user: the entrypoint needs no chown/gosu, so every
+    # capability can be dropped. The named volume inherits the image's ownership (999).
+    user: "999:999"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_superuser_password
+      # SCRAM for TCP *and* the local socket; data checksums detect silent corruption.
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 --data-checksums"
+      DOCASSIST_DB_NAME: docassist
+    secrets:
+      - postgres_superuser_password
+      - postgres_owner_password
+      - postgres_app_password
+      - postgres_worker_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deployment/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    read_only: true
+    tmpfs:
+      - /var/run/postgresql:size=16m
+      - /tmp:size=128m,mode=1777,noexec,nosuid,nodev
+    shm_size: 256m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 300
+    mem_limit: 1g
+    cpus: 2
+    stop_grace_period: 60s
+    # TCP, not the socket: during first-run initialisation the temporary server listens on
+    # the socket only, so dependants wait until initdb scripts have finished.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres", "-d", "docassist"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [backend]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.11-alpine
+    user: "999:1000"
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./deployment/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    secrets:
+      - source: redis_acl
+        target: redis_users.acl
+    read_only: true
+    tmpfs:
+      - /data:size=16m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 384m
+    cpus: 1
+    healthcheck:
+      # The ACL lets the unauthenticated default user run PING and nothing else.
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------------------
+  # docassist
+  # ---------------------------------------------------------------------------------------
+  # One-shot schema migration as the schema-owner role. It runs Alembic directly (the same
+  # upgrade `docassist migrate` performs), so it needs the owner DSN and nothing else: no
+  # JWT/encryption keys and no application role credentials.
+  migrate:
+    <<: [*docassist-image, *hardening]
+    entrypoint: ["alembic", "-c", "/app/alembic.ini"]
+    command: ["upgrade", "head"]
+    environment:
+      DOCASSIST_DATABASE__MIGRATION_URL_FILE: /run/secrets/database_migration_url
+      DOCASSIST_EMBEDDING__DIMENSIONS: "1024"
+    secrets:
+      - database_migration_url
+    # The image declares /var/lib/docassist as a VOLUME; migrations never write there, so an
+    # empty tmpfs stands in instead of an anonymous volume per run.
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+      - /var/lib/docassist:size=1m,noexec,nosuid,nodev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1
+    networks: [backend]
+    restart: "no"
+
+  api:
+    <<: [*docassist-image, *hardening]
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *app-environment
+    secrets:
+      - database_url
+      - redis_url
+      - jwt_signing_key
+      - token_pepper
+      - audit_hmac_key
+      - encryption_keys
+      - encryption_key_id
+      - metrics_token
+    volumes:
+      - docassist-data:/var/lib/docassist
+    ports:
+      # Loopback only. Put the TLS reverse proxy (deployment/nginx/) in front for remote use.
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 2
+    stop_grace_period: 30s
+    networks: [edge, backend, egress]
+    restart: unless-stopped
+
+  worker:
+    <<: [*docassist-image, *hardening]
+    command: ["worker"]
+    environment:
+      <<: *app-environment
+      DOCASSIST_DATABASE__WORKER_URL_FILE: /run/secrets/database_worker_url
+    secrets:
+      - database_url
+      - database_worker_url
+      - redis_url
+      - jwt_signing_key
+      - token_pepper
+      - audit_hmac_key
+      - encryption_keys
+      - encryption_key_id
+      - metrics_token
+    volumes:
+      - docassist-data:/var/lib/docassist
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # The worker serves no HTTP. This checks that it is running and can reach its job queue
+    # (PostgreSQL); a crashed worker exits and is restarted by the restart policy.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('postgres', 5432), timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Parser sandbox subprocesses (parser.max_concurrency x parser.memory_limit_mb) live here.
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2
+    # >= DOCASSIST_WORKER__SHUTDOWN_GRACE_SECONDS (30 s): running jobs finish or release.
+    stop_grace_period: 45s
+    networks: [backend, egress]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------------------
+  # Optional services (profiles). Enable one with --profile NAME *and* its override file,
+  # which also points the application at it.
+  # ---------------------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.19.1-unprivileged
+    profiles: [qdrant]
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+    secrets:
+      # The API key lives in Qdrant's local config override, mounted as a secret file.
+      - source: qdrant_config
+        target: /qdrant/config/local.yaml
+    volumes:
+      - qdrant-data:/qdrant/storage
+    # Not read_only: Qdrant writes an initialisation marker into its working directory.
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:1.5.4
+    profiles: [clamav]
+    volumes:
+      - clamav-db:/var/lib/clamav
+    # The image's init starts as root, prepares its directories and drops to the clamav user
+    # for clamd and freshclam; cap_add keeps what a chown-then-drop-privileges start-up uses.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    # Signature databases need ~1.5-2.5 GB of RAM once loaded.
+    mem_limit: 3g
+    cpus: 2
+    healthcheck:
+      # The image's own clamd PING check; the first signature download can take minutes.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 6m
+    # freshclam downloads signature updates, so clamd is also on "egress"; mirror the
+    # signatures internally and drop that network where uploads must never meet the internet.
+    networks: [backend, egress]
+    restart: unless-stopped
+
+  # Pulls the model once (with internet access), then exits; the model server itself runs
+  # on the internal network only, so text sent to the local LLM cannot leave the host.
+  ollama-pull:
+    image: ollama/ollama:0.35.0
+    profiles: [ollama]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve >/dev/null 2>&1 &
+        tries=0
+        until ollama list >/dev/null 2>&1; do
+          tries=$$((tries + 1)); [ "$$tries" -le 60 ] || exit 1; sleep 1
+        done
+        ollama pull "$${OLLAMA_MODEL}"
+    environment:
+      OLLAMA_MODEL: ${DOCASSIST_OLLAMA_MODEL:-llama3.1:8b}
+    volumes:
+      - ollama-models:/root/.ollama
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [egress]
+    restart: "no"
+
+  ollama:
+    image: ollama/ollama:0.35.0
+    profiles: [ollama]
+    volumes:
+      - ollama-models:/root/.ollama
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 12g
+    networks: [backend]
+    restart: unless-stopped
+
+networks:
+  edge: {}
+  backend:
+    internal: true
+  egress: {}
+
+volumes:
+  postgres-data: {}
+  docassist-data: {}
+  qdrant-data: {}
+  clamav-db: {}
+  ollama-models: {}
+
+# File-based Docker secrets from scripts/generate-secrets.sh. Each service mounts only the
+# files it needs at /run/secrets/<name>.
+secrets:
+  postgres_superuser_password:
+    file: ./deployment/secrets/postgres_superuser_password
+  postgres_owner_password:
+    file: ./deployment/secrets/postgres_owner_password
+  postgres_app_password:
+    file: ./deployment/secrets/postgres_app_password
+  postgres_worker_password:
+    file: ./deployment/secrets/postgres_worker_password
+  database_url:
+    file: ./deployment/secrets/database_url
+  database_worker_url:
+    file: ./deployment/secrets/database_worker_url
+  database_migration_url:
+    file: ./deployment/secrets/database_migration_url
+  redis_acl:
+    file: ./deployment/secrets/redis_users.acl
+  redis_url:
+    file: ./deployment/secrets/redis_url
+  jwt_signing_key:
+    file: ./deployment/secrets/jwt_signing_key
+  token_pepper:
+    file: ./deployment/secrets/token_pepper
+  audit_hmac_key:
+    file: ./deployment/secrets/audit_hmac_key
+  encryption_keys:
+    file: ./deployment/secrets/encryption_keys
+  encryption_key_id:
+    file: ./deployment/secrets/encryption_key_id
+  metrics_token:
+    file: ./deployment/secrets/metrics_token
+  qdrant_config:
+    file: ./deployment/secrets/qdrant_config.yaml

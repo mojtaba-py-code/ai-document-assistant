@@ -1,0 +1,18 @@
+# Allow-list build context: only what the image needs is sent to the builder, so secrets,
+# .env files, virtualenvs, caches and test data can never end up in a layer.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!alembic.ini
+!src/
+!migrations/
+!scripts/export-requirements.sh
+
+# ...and nothing generated inside the allowed directories.
+**/__pycache__/
+**/*.py[cod]
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/

@@ -1,0 +1,11 @@
+# Pod Security Admission: pods that are not "restricted"-compliant are rejected outright.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: docassist
+  labels:
+    app.kubernetes.io/name: docassist
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

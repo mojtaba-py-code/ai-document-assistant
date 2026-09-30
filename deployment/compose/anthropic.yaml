@@ -1,0 +1,25 @@
+# Override: Claude (Anthropic API) answers documents up to the external classification
+# ceiling (DOCASSIST_LLM__EXTERNAL_MAX_CLASSIFICATION, default CONFIDENTIAL); anything above
+# it stays with the local provider.
+#
+#   printf '%s' "$ANTHROPIC_API_KEY" > deployment/secrets/anthropic_api_key
+#   docker compose -f compose.yaml -f deployment/compose/anthropic.yaml up -d
+#
+# Relative paths resolve against the directory of compose.yaml (the first file).
+
+x-anthropic-environment: &anthropic-environment
+  DOCASSIST_LLM__PROVIDER: anthropic
+  DOCASSIST_LLM__ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+  DOCASSIST_OUTBOUND__ALLOWED_HOSTS: '["api.anthropic.com"]'
+
+services:
+  api:
+    environment: *anthropic-environment
+    secrets: [anthropic_api_key]
+  worker:
+    environment: *anthropic-environment
+    secrets: [anthropic_api_key]
+
+secrets:
+  anthropic_api_key:
+    file: ./deployment/secrets/anthropic_api_key

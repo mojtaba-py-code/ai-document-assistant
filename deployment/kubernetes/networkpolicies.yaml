@@ -1,0 +1,124 @@
+# Zero-trust networking for the docassist namespace: everything is denied, then each
+# component gets exactly the flows it needs. Requires a CNI that enforces NetworkPolicy
+# (Calico, Cilium, ...). Addresses marked REPLACE are your managed PostgreSQL/Redis ranges.
+#
+#   ingress/gateway ──8000──> api ──5432──> PostgreSQL        worker ──5432──> PostgreSQL
+#   monitoring      ──8000──> api ──6379/6380──> Redis        worker ──6379/6380──> Redis
+#                              api ──3310──> ClamAV            worker ──443──> LLM/embeddings
+#                              api ──443──> LLM/embeddings     migrate ──5432──> PostgreSQL
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: docassist
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        # The namespace of your ingress controller / Gateway implementation.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-system # REPLACE
+        # Prometheus scraping /metrics (bearer token required by the application as well).
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring # REPLACE
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, worker]
+    matchLabels:
+      app.kubernetes.io/name: docassist
+  policyTypes: [Egress]
+  egress:
+    # Managed PostgreSQL.
+    - to:
+        - ipBlock:
+            cidr: 10.100.0.0/24 # REPLACE
+      ports:
+        - { protocol: TCP, port: 5432 }
+    # Managed Redis (6379 plain / 6380 TLS).
+    - to:
+        - ipBlock:
+            cidr: 10.100.1.0/24 # REPLACE
+      ports:
+        - { protocol: TCP, port: 6379 }
+        - { protocol: TCP, port: 6380 }
+    # ClamAV (clamd) in its own namespace.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: docassist-scanning # REPLACE
+      ports:
+        - { protocol: TCP, port: 3310 }
+    # LLM and embedding APIs over HTTPS only, public addresses only. Host-level allow-listing
+    # is enforced by the application (DOCASSIST_OUTBOUND__ALLOWED_HOSTS); use an egress
+    # gateway or FQDN policy (Cilium/Calico) to pin api.anthropic.com at the network layer.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: migrate-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: docassist
+      app.kubernetes.io/component: migrate
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.100.0.0/24 # REPLACE (managed PostgreSQL)
+      ports:
+        - { protocol: TCP, port: 5432 }

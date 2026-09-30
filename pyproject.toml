@@ -1,0 +1,245 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "docassist"
+version = "1.0.0"
+description = "AI Document Assistant - secure, multi-tenant enterprise document intelligence and RAG platform"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "Mojtaba Karimi" }]
+keywords = ["rag", "llm", "fastapi", "document-ai", "enterprise-search", "security", "multi-tenant"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Text Processing :: Indexing",
+    "Typing :: Typed",
+]
+dependencies = [
+    # Web / API
+    "fastapi>=0.120,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "python-multipart>=0.0.20",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.10,<3",
+    # Data stores
+    "sqlalchemy[asyncio]>=2.0.40,<3",
+    "asyncpg>=0.30,<1",
+    "alembic>=1.16,<2",
+    "pgvector>=0.4,<1",
+    "redis>=6,<9",
+    # Outbound HTTP + LLM
+    "httpx>=0.28,<1",
+    "anthropic>=1.9,<2",
+    # Document parsing (pure-Python parsers, no native renderers)
+    "pypdf>=6.1,<7",
+    "python-docx>=1.2,<2",
+    "openpyxl>=3.1.5,<4",
+    "defusedxml>=0.7.1,<1",
+    # Security primitives
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.10,<3",
+    "cryptography>=45",
+    # Observability
+    "structlog>=25.1",
+    "prometheus-client>=0.22",
+]
+
+[project.optional-dependencies]
+qdrant = ["qdrant-client>=1.15,<2"]
+ocr = ["pillow>=11.3"]
+
+[project.scripts]
+docassist = "docassist.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mojtaba-py-code/ai-document-assistant"
+Documentation = "https://github.com/mojtaba-py-code/ai-document-assistant/tree/main/docs"
+Issues = "https://github.com/mojtaba-py-code/ai-document-assistant/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "pytest-asyncio>=1.1",
+    "pytest-cov>=6.2",
+    "hypothesis>=6.135",
+    "fakeredis[lua]>=2.30",
+    "asgi-lifespan>=2.1",
+    "pyyaml>=6.0",
+    "qdrant-client>=1.15,<2",
+    "ruff>=0.12",
+    "mypy>=1.17",
+    "bandit>=1.8",
+    "pip-audit>=2.9",
+    "import-linter>=2.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/docassist"]
+exclude = ["__pycache__", "*.pyc"]
+
+# The migrations ship inside the wheel so `docassist migrate` works from any directory.
+[tool.hatch.build.targets.wheel.force-include]
+"alembic.ini" = "docassist/_alembic/alembic.ini"
+"migrations/env.py" = "docassist/_alembic/migrations/env.py"
+"migrations/script.py.mako" = "docassist/_alembic/migrations/script.py.mako"
+"migrations/docassist_migration_security.py" = "docassist/_alembic/migrations/docassist_migration_security.py"
+"migrations/versions/0001_initial_schema.py" = "docassist/_alembic/migrations/versions/0001_initial_schema.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/docassist", "migrations", "alembic.ini", "README.md", "LICENSE"]
+
+# --------------------------------------------------------------------------- #
+# Ruff
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "S", "C4", "SIM", "RUF", "PT", "ASYNC",
+    "N", "PL", "PERF", "TRY", "DTZ", "BLE", "A", "ISC", "LOG", "G", "T20", "PIE", "RET",
+]
+ignore = [
+    "PLR0913",  # many-args is normal for service constructors
+    "PLR2004",  # magic values in comparisons are fine in parsers
+    "PLR0911", "PLR0912", "PLR0915",
+    "TRY003",   # messages in exceptions are intentional
+    "TRY300",
+    "RUF012",
+    "S311",     # random is used only for jitter, never for security
+    "ISC001",
+    "PLC0415",  # local imports are used deliberately for optional dependencies
+    "N818",     # domain exception names (NotFound, PermissionDenied) read better without "Error"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501", "PT011", "PT012", "PT018", "PERF401", "S104", "S101", "S105", "S106", "S108", "PLR2004", "S603", "S607", "T20", "PLC", "N", "DTZ", "ASYNC", "BLE", "TRY", "SIM117", "S608"]
+"src/docassist/ingestion/sandbox_child.py" = ["T20"]
+"src/docassist/cli.py" = ["T20"]
+"src/docassist/api/routers/auth.py" = ["S105", "S106"]  # token_transport/token_type are not secrets
+"migrations/**" = ["S608", "E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.File", "fastapi.Form", "fastapi.Path", "fastapi.Body", "fastapi.Cookie"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# --------------------------------------------------------------------------- #
+# Mypy
+# --------------------------------------------------------------------------- #
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+mypy_path = "src"
+files = ["src/docassist"]
+
+[[tool.mypy.overrides]]
+module = ["pgvector.*", "docx.*", "openpyxl.*", "defusedxml.*", "qdrant_client.*", "fakeredis.*", "asgi_lifespan.*"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# --------------------------------------------------------------------------- #
+# Pytest
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "db: needs PostgreSQL (DOCASSIST_TEST_DATABASE_URL)",
+    "slow: slower end-to-end scenarios",
+    "adversarial: adversarial / red-team scenarios",
+    "llm_eval: offline LLM evaluation harness",
+]
+filterwarnings = [
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.coverage.run]
+source = ["docassist"]
+branch = true
+omit = ["src/docassist/ingestion/sandbox_child.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@overload", "\\.\\.\\."]
+
+# --------------------------------------------------------------------------- #
+# Bandit
+# --------------------------------------------------------------------------- #
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101", "B311"]  # B311: `random` is used only for retry/backoff jitter
+
+# --------------------------------------------------------------------------- #
+# Import boundaries (import-linter)
+# --------------------------------------------------------------------------- #
+[tool.importlinter]
+root_package = "docassist"
+include_external_packages = true
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Core has no dependencies on feature modules"
+type = "forbidden"
+source_modules = ["docassist.core"]
+forbidden_modules = [
+    "docassist.api", "docassist.documents", "docassist.ingestion", "docassist.search",
+    "docassist.rag", "docassist.llm", "docassist.intelligence", "docassist.identity",
+    "docassist.jobs", "docassist.audit",
+]
+
+[[tool.importlinter.contracts]]
+name = "Security primitives stay framework-free"
+type = "forbidden"
+source_modules = ["docassist.security"]
+forbidden_modules = ["docassist.api", "fastapi", "starlette", "docassist.db"]
+
+[[tool.importlinter.contracts]]
+name = "The parser sandbox child imports no secrets, DB, network or LLM code"
+type = "forbidden"
+source_modules = ["docassist.ingestion.sandbox_child", "docassist.ingestion.parsers"]
+forbidden_modules = [
+    "docassist.core.config", "docassist.db", "docassist.llm", "docassist.api",
+    "docassist.security", "httpx", "anthropic", "sqlalchemy", "redis",
+]
+
+[[tool.importlinter.contracts]]
+name = "The LLM layer never touches the database or storage directly"
+type = "forbidden"
+source_modules = ["docassist.llm"]
+forbidden_modules = ["docassist.db", "sqlalchemy", "docassist.documents", "docassist.api"]
+
+[[tool.importlinter.contracts]]
+name = "Domain services do not depend on the HTTP layer"
+type = "forbidden"
+source_modules = [
+    "docassist.documents", "docassist.ingestion", "docassist.search", "docassist.rag",
+    "docassist.intelligence", "docassist.identity", "docassist.jobs", "docassist.audit",
+    "docassist.authz",
+]
+forbidden_modules = ["docassist.api", "fastapi", "starlette"]

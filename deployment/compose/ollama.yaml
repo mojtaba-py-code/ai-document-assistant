@@ -1,0 +1,29 @@
+# Override: a local LLM (Ollama, OpenAI-compatible API) as the provider for documents above
+# the external classification ceiling, so restricted text is never sent off the host.
+#
+#   DOCASSIST_OLLAMA_MODEL=llama3.1:8b \
+#     docker compose -f compose.yaml -f deployment/compose/ollama.yaml up -d
+#
+# ollama-pull downloads the model once over the egress network and exits; the ollama server
+# then runs on the internal backend network only.
+
+x-ollama-environment: &ollama-environment
+  DOCASSIST_LLM__LOCAL_PROVIDER: openai_compatible
+  DOCASSIST_LLM__LOCAL_BASE_URL: http://ollama:11434/v1
+  DOCASSIST_LLM__LOCAL_MODEL: ${DOCASSIST_OLLAMA_MODEL:-llama3.1:8b}
+
+services:
+  ollama-pull:
+    profiles: !reset []
+  ollama:
+    profiles: !reset []
+  api:
+    environment: *ollama-environment
+    depends_on:
+      ollama:
+        condition: service_started
+  worker:
+    environment: *ollama-environment
+    depends_on:
+      ollama:
+        condition: service_started

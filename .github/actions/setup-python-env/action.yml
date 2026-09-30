@@ -1,0 +1,28 @@
+name: Set up Python environment
+description: >-
+  Install uv and Python, then the project with its development dependency group and all
+  extras. Uses the lock file (uv sync --locked) whenever uv.lock is committed.
+
+inputs:
+  python-version:
+    description: Python version to install.
+    required: false
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: "0.12.21"
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install project and development dependencies
+      shell: bash
+      run: |
+        if [ -f uv.lock ]; then
+          uv sync --locked --all-extras
+        else
+          echo "::warning title=No uv.lock::dependencies resolved from pyproject.toml ranges; commit uv.lock for reproducible CI"
+          uv sync --all-extras
+        fi

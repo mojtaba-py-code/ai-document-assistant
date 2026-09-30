@@ -1,0 +1,49 @@
+# pre-commit install   (every commit then runs these hooks; CI runs the same checks)
+#
+# The mypy hook uses the project's own environment: activate the virtualenv first
+# (make install / uv sync), so it type-checks against the real dependencies.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+        # --unsafe: syntax check only, so compose's !reset tag and multi-document
+        # Kubernetes manifests are accepted.
+        args: [--unsafe, --allow-multiple-documents]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        args: [--config, .github/gitleaks.toml]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (strict)
+        entry: mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: import-linter
+        name: architecture contracts (import-linter)
+        entry: lint-imports
+        language: system
+        types: [python]
+        pass_filenames: false

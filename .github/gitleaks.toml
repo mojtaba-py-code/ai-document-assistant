@@ -1,0 +1,11 @@
+# Secret scanning (gitleaks >= 8.25): the default rule set, plus one allow-list for the test
+# suite, whose synthetic credentials exist to exercise the redaction and secret-detection
+# code and must stay. Used by CI (GITLEAKS_CONFIG) and by the pre-commit hook (--config).
+title = "docassist secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic credentials in tests (redaction, secret-detection and auth tests)"
+paths = ['''^tests/''']

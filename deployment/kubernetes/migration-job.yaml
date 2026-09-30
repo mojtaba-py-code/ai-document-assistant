@@ -1,0 +1,85 @@
+# Schema migration, run once per release BEFORE the new api/worker image rolls out:
+#
+#   kubectl -n docassist create -f deployment/kubernetes/migration-job.yaml
+#   kubectl -n docassist wait --for=condition=complete job -l app.kubernetes.io/component=migrate --timeout=15m
+#
+# (generateName: every run is a new Job; finished Jobs are garbage-collected after a day.)
+# It connects as the schema-owner role and mounts ONLY that DSN - no application keys.
+# It runs Alembic directly, which is the upgrade `docassist migrate` performs.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: docassist-migrate-
+  namespace: docassist
+  labels:
+    app.kubernetes.io/name: docassist
+    app.kubernetes.io/component: migrate
+    app.kubernetes.io/part-of: docassist
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: docassist
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: docassist
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/mojtaba-py-code/ai-document-assistant:1.0.0 # same tag/digest as the release
+          imagePullPolicy: IfNotPresent
+          command: ["alembic", "-c", "/app/alembic.ini"]
+          args: ["upgrade", "head"]
+          env:
+            - name: DOCASSIST_DATABASE__MIGRATION_URL_FILE
+              value: /run/secrets/docassist/database_migration_url
+            - name: DOCASSIST_EMBEDDING__DIMENSIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: docassist-config
+                  key: DOCASSIST_EMBEDDING__DIMENSIONS
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: secrets
+              mountPath: /run/secrets/docassist
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        - name: secrets
+          secret:
+            secretName: docassist-secrets
+            defaultMode: 0440
+            items:
+              - { key: database_migration_url, path: database_migration_url }

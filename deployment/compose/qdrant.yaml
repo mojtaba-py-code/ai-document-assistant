@@ -1,0 +1,33 @@
+# Override: Qdrant as the vector store (pgvector stays the source of truth for chunks; the
+# worker mirrors embeddings into Qdrant through the vector_sync_* jobs).
+#
+#   docker compose -f compose.yaml -f deployment/compose/qdrant.yaml up -d
+#
+# `!reset []` clears the "qdrant" profile, so the service starts without --profile.
+# Traffic stays on the internal backend network; the API key comes from
+# deployment/secrets/qdrant_api_key (scripts/generate-secrets.sh).
+
+x-qdrant-environment: &qdrant-environment
+  DOCASSIST_RETRIEVAL__BACKEND: qdrant
+  DOCASSIST_RETRIEVAL__QDRANT_URL: http://qdrant:6333
+  DOCASSIST_RETRIEVAL__QDRANT_API_KEY_FILE: /run/secrets/qdrant_api_key
+
+services:
+  qdrant:
+    profiles: !reset []
+  api:
+    environment: *qdrant-environment
+    secrets: [qdrant_api_key]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+  worker:
+    environment: *qdrant-environment
+    secrets: [qdrant_api_key]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+secrets:
+  qdrant_api_key:
+    file: ./deployment/secrets/qdrant_api_key

@@ -1,0 +1,53 @@
+# Everything that runs or is parsed inside Linux containers keeps LF line endings, even when
+# the repository is cloned on Windows with core.autocrlf=true (a CRLF in a shell script or an
+# initdb script breaks the container at start-up).
+* text=auto eol=lf
+
+*.py text eol=lf diff=python
+*.pyi text eol=lf diff=python
+*.sh text eol=lf
+*.sql text eol=lf
+*.md text eol=lf diff=markdown
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.conf text eol=lf
+*.acl text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.html text eol=lf diff=html
+*.css text eol=lf diff=css
+*.js text eol=lf
+*.mako text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+*.lock text eol=lf
+Dockerfile* text eol=lf
+.dockerignore text eol=lf
+Makefile text eol=lf
+.env.example text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary artefacts (test fixtures, images, office documents) are never diffed or normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.woff binary
+*.woff2 binary
+*.dump binary
+*.svg text eol=lf

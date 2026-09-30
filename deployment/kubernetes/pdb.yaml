@@ -1,0 +1,22 @@
+# Voluntary disruptions (node drains, cluster upgrades) never take the last replica down.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: docassist-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docassist
+      app.kubernetes.io/component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: docassist-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docassist
+      app.kubernetes.io/component: worker

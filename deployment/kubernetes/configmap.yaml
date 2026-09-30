@@ -1,0 +1,38 @@
+# Non-secret settings (production). Everything secret is a *_FILE path into the Secret
+# volume - see the Deployments. docassist refuses to start in production with development
+# shortcuts, so every value below is one that passes core/config.py::_check_production.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docassist-config
+  labels:
+    app.kubernetes.io/name: docassist
+data:
+  DOCASSIST_ENVIRONMENT: production
+  DOCASSIST_PUBLIC_BASE_URL: https://docs.example.com # REPLACE
+  # "localhost" is needed by the kubelet probes, which send "Host: localhost".
+  DOCASSIST_SECURITY__ALLOWED_HOSTS: '["docs.example.com","localhost"]' # REPLACE
+  # Pod network range of the ingress/gateway proxies; X-Forwarded-* is honoured only from it.
+  DOCASSIST_SECURITY__TRUSTED_PROXIES: '["10.0.0.0/8"]' # REPLACE
+  DOCASSIST_SECURITY__COOKIE_SECURE: "true"
+  DOCASSIST_SECURITY__EXPOSE_API_DOCS: "false"
+  # "require" encrypts; use "verify-full" when the image trusts your database CA.
+  DOCASSIST_DATABASE__SSL: require
+  DOCASSIST_DATABASE__POOL_SIZE: "10"
+  DOCASSIST_DATABASE__MAX_OVERFLOW: "10"
+  DOCASSIST_STORAGE__ROOT: /var/lib/docassist/storage
+  DOCASSIST_UPLOAD__MALWARE_SCANNER: clamav
+  DOCASSIST_UPLOAD__CLAMAV_HOST: clamav.docassist-scanning.svc.cluster.local # REPLACE
+  DOCASSIST_UPLOAD__CLAMAV_PORT: "3310"
+  DOCASSIST_LLM__PROVIDER: anthropic
+  DOCASSIST_LLM__EXTERNAL_MAX_CLASSIFICATION: CONFIDENTIAL
+  DOCASSIST_LLM__LOCAL_PROVIDER: none
+  DOCASSIST_EMBEDDING__PROVIDER: openai_compatible
+  DOCASSIST_EMBEDDING__BASE_URL: https://embeddings.example.com/v1 # REPLACE
+  DOCASSIST_EMBEDDING__MODEL: text-embedding-model # REPLACE
+  DOCASSIST_EMBEDDING__DIMENSIONS: "1024"
+  DOCASSIST_OUTBOUND__ALLOWED_HOSTS: '["api.anthropic.com","embeddings.example.com"]' # REPLACE
+  DOCASSIST_RETRIEVAL__BACKEND: pgvector
+  DOCASSIST_OBSERVABILITY__LOG_FORMAT: json
+  DOCASSIST_OBSERVABILITY__LOG_LEVEL: INFO
+  DOCASSIST_WORKER__SHUTDOWN_GRACE_SECONDS: "30"

@@ -1,0 +1,58 @@
+# Patterns that only make sense at the repository root are anchored with "/" so they can
+# never hide a package file (hatchling also honours this file when it builds the wheel).
+
+# --- secrets and local configuration: never commit ---------------------------------------
+/.env
+/.env.*
+!/.env.example
+/deployment/secrets/
+/deployment/kubernetes/*.secret.yaml
+.demo-credentials*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+
+# --- runtime state ------------------------------------------------------------------------
+/var/
+/backups/
+*.log
+*.eml
+
+# --- python -------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+/.venv/
+/venv/
+/build/
+/dist/
+/requirements*.txt
+/requirements.audit.txt
+
+# --- tool caches and reports --------------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+/sbom*.json
+/trivy*.sarif
+/reports/
+
+# --- local tool settings, editors and OS files -------------------------------------------
+.claude/
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db

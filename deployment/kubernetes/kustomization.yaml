@@ -1,0 +1,42 @@
+# docassist on Kubernetes (production profile).
+#
+#   kubectl apply -k deployment/kubernetes            # everything except the migration Job
+#   kubectl -n docassist create -f deployment/kubernetes/migration-job.yaml   # per release
+#   kubectl -n docassist wait --for=condition=complete job -l app.kubernetes.io/component=migrate --timeout=15m
+#
+# Assumptions (replace the placeholders marked "REPLACE"):
+#   * PostgreSQL 16 + pgvector and Redis are managed services outside the cluster; their
+#     address ranges appear in networkpolicies.yaml. The three database roles are created
+#     as in deployment/postgres/initdb/10-docassist-init.sh.
+#   * Secrets come from External Secrets Operator (externalsecret.yaml). Without ESO, create
+#     the Secret yourself from secret.example.yaml (never commit filled-in values).
+#   * A ReadWriteMany storage class for the shared encrypted object store (pvc.yaml).
+#   * The namespace enforces the "restricted" Pod Security Standard; every pod here complies.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: docassist
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: docassist
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - externalsecret.yaml
+  - pvc.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - worker-deployment.yaml
+  - networkpolicies.yaml
+  - pdb.yaml
+  - hpa.yaml
+
+# Pin the image by digest in production (REPLACE with the digest your CI pushed):
+images:
+  - name: ghcr.io/mojtaba-py-code/ai-document-assistant
+    newTag: "1.0.0"

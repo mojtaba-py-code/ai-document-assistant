@@ -1,0 +1,26 @@
+# Override: scan every upload with ClamAV (clamd over TCP on the internal network) before it
+# is stored or parsed.
+#
+#   docker compose -f compose.yaml -f deployment/compose/clamav.yaml up -d
+#
+# The first start downloads the signature databases (several minutes); the api waits for
+# clamd to report healthy.
+
+x-clamav-environment: &clamav-environment
+  DOCASSIST_UPLOAD__MALWARE_SCANNER: clamav
+  DOCASSIST_UPLOAD__CLAMAV_HOST: clamav
+  DOCASSIST_UPLOAD__CLAMAV_PORT: "3310"
+
+services:
+  clamav:
+    profiles: !reset []
+  api:
+    environment: *clamav-environment
+    depends_on:
+      clamav:
+        condition: service_healthy
+  worker:
+    environment: *clamav-environment
+    depends_on:
+      clamav:
+        condition: service_healthy

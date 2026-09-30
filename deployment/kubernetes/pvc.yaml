@@ -1,0 +1,16 @@
+# Shared object store for encrypted document blobs and exports. The API writes uploads and
+# the worker reads them, across replicas, so the volume must be ReadWriteMany (EFS, Filestore,
+# Azure Files, CephFS, NFS ...). Blobs are AES-GCM encrypted by the application; the storage
+# layer should still be encrypted at rest and backed up (scripts/backup.sh covers compose).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: docassist-storage
+  labels:
+    app.kubernetes.io/name: docassist
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: shared-rwx # REPLACE with an RWX-capable storage class
+  resources:
+    requests:
+      storage: 100Gi
