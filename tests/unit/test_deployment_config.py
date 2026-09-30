@@ -15,6 +15,7 @@ import base64
 import functools
 import re
 import secrets
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -184,6 +185,20 @@ def test_dockerfile_runtime_is_non_root_with_healthcheck_and_entrypoint() -> Non
     assert 'VOLUME ["/var/lib/docassist"]' in runtime
     assert "DOCASSIST_ENVIRONMENT=production" in runtime, "the image must be secure by default"
     assert "--require-hashes" in DOCKERFILE, "dependencies must be hash-verified"
+
+
+def test_dockerfile_builder_copies_every_file_the_wheel_force_includes() -> None:
+    # `uv build` in the builder stage fails if a force-included file is not in /src yet.
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    force_include = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    builder = DOCKERFILE.split(" AS runtime", 1)[0]
+    before_build = builder[: builder.index("uv build")]
+    copies = re.findall(r"^COPY\s+(?!--)(.+?)\s+\S+$", before_build, flags=re.MULTILINE)
+    copied = {source.rstrip("/*") for line in copies for source in line.split()}
+    for path in force_include:
+        assert path in copied or path.split("/", 1)[0] in copied, (
+            f"{path} is force-included in the wheel but not copied before `uv build`"
+        )
 
 
 def test_dockerfile_bakes_in_no_secrets_and_fetches_nothing_remote() -> None:

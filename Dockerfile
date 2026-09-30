@@ -52,7 +52,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python --require-hashes --no-deps \
         --requirement /tmp/requirements.txt
 
-# 2) The application wheel, installed without dependencies (they are all pinned above).
+# 2) The application wheel, installed without dependencies (they are all pinned above). The
+#    wheel bundles the Alembic migrations (pyproject.toml force-include), so the build needs them.
+COPY alembic.ini ./
+COPY migrations ./migrations
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     set -eu; \
@@ -99,7 +102,8 @@ RUN set -eu; \
     find / -xdev -type f -perm /6000 -exec chmod a-s {} + 2>/dev/null || true
 
 COPY --from=builder /opt/venv /opt/venv
-# Alembic migrations are not part of the wheel; they are root-owned and read-only here.
+# `alembic -c /app/alembic.ini` (compose, the Kubernetes migration Job) runs from this
+# root-owned, read-only copy; `docassist migrate` also finds the copy bundled in the wheel.
 COPY alembic.ini /app/alembic.ini
 COPY migrations /app/migrations
 
