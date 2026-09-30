@@ -17,7 +17,8 @@ Hardening applied before any document byte is read:
   interpreter runs with ``-B`` so no bytecode is written and ``SIGXFSZ`` is ignored so a
   write fails instead of killing the process), ``RLIMIT_NOFILE = 64``, ``RLIMIT_CORE = 0``
   (no core dump containing plaintext) and ``RLIMIT_NPROC = 0`` where available (no fork);
-* ``defusedxml.defuse_stdlib()``, a modest recursion limit.
+* ``defusedxml.defuse_stdlib()``, a modest recursion limit;
+* optional native modules the parsers never need are blocked (:data:`BLOCKED_MODULES`).
 
 This module may import only the standard library, ``defusedxml`` and
 ``docassist.ingestion.{model,parsers}`` (enforced by an import-linter contract).
@@ -37,6 +38,10 @@ from docassist.ingestion.model import FORMATS, Limits
 
 RECURSION_LIMIT = 2_000
 MAX_OPEN_FILES = 64
+# openpyxl imports numpy whenever it is installed (qdrant-client depends on it), and numpy's
+# OpenBLAS starts worker threads at import: under RLIMIT_NPROC = 0 pthread_create fails and
+# OpenBLAS raise()s SIGINT, killing the child. openpyxl treats numpy as optional.
+BLOCKED_MODULES = ("numpy",)
 EXIT_OK = 0
 EXIT_PARSE_ERROR = 2
 
@@ -112,6 +117,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     sys.dont_write_bytecode = True
+    for name in BLOCKED_MODULES:
+        sys.modules[name] = None  # type: ignore[assignment]  # `import numpy` -> ImportError
     args = _parse_args(argv)
     limits = Limits.from_arg(args.limits)
     network_isolated = _isolate_network()
@@ -127,15 +134,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.format == "probe":
         for fmt in FORMATS:  # report the widest import set any document could trigger
             get_parser(fmt)
+        loaded = [name for name, module in sys.modules.items() if module is not None]
         _emit(
             {
                 "ok": True,
                 "probe": {
                     "env_keys": sorted(os.environ),
-                    "modules": sorted({name.partition(".")[0] for name in sys.modules}),
-                    "docassist_modules": sorted(
-                        n for n in sys.modules if n.startswith("docassist")
-                    ),
+                    "modules": sorted({name.partition(".")[0] for name in loaded}),
+                    "docassist_modules": sorted(n for n in loaded if n.startswith("docassist")),
                     "network_isolated": network_isolated,
                     "rlimits_applied": rlimits_applied,
                     "rlimits": rlimits,

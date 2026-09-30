@@ -122,6 +122,7 @@ async def test_real_child_environment_and_imports(
         "fastapi",
         "starlette",
         "pydantic",
+        "numpy",  # its OpenBLAS threads kill the child under RLIMIT_NPROC = 0
     }
     assert forbidden.isdisjoint(probe["modules"])
     assert {"pypdf", "docx", "openpyxl"} <= set(probe["modules"])
