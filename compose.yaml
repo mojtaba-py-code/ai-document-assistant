@@ -87,7 +87,7 @@ services:
   # Data stores (backend network only, no published ports)
   # ---------------------------------------------------------------------------------------
   postgres:
-    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    image: pgvector/pgvector:0.8.7-pg16-bookworm
     # Runs directly as the image's postgres user: the entrypoint needs no chown/gosu, so every
     # capability can be dropped. The named volume inherits the image's ownership (999).
     user: "999:999"
