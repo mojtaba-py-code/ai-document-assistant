@@ -51,6 +51,12 @@ updates:
       interval: weekly
       day: monday
     labels: [dependencies, docker]
+    allow:
+      # Third-party images only. docassist is built from this repository (the
+      # docker entry tracks its base image) and Docker Hub has no repository by
+      # that name, so looking it up failed the whole docker-compose update job.
+      - dependency-name: "*/*"
+      - dependency-name: "redis"
     ignore:
       # Major versions (PostgreSQL 16 -> 17, Redis 7 -> 8) need a planned migration.
       - dependency-name: "*"

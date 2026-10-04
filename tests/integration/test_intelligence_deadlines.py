@@ -174,8 +174,11 @@ async def test_duplicate_extractions_are_merged(factory, container) -> None:
 
 
 async def test_filters_limit_and_contract_method(factory, container) -> None:
+    # upcoming() and upcoming_deadlines() take no `now` and read the real clock,
+    # so every date in this test is anchored to it rather than to the frozen NOW.
+    now = datetime.now(UTC)
     t = await tenant(factory)
-    day = TODAY + timedelta(days=3)
+    day = now.date() + timedelta(days=3)
     contract = await seed_document(
         container,
         t.org,
@@ -191,9 +194,9 @@ async def test_filters_limit_and_contract_method(factory, container) -> None:
         fields={0: [due(day + timedelta(days=1))]},
     )
     principal = await factory.principal(t.employee)
-    contracts = await window(container, principal, within_days=30, doc_type="contract")
+    contracts = await window(container, principal, within_days=30, doc_type="contract", now=now)
     assert [i.document_id for i in contracts.items] == [contract.id]
-    limited = await window(container, principal, within_days=30, limit=1)
+    limited = await window(container, principal, within_days=30, limit=1, now=now)
     assert len(limited.items) == 1 and limited.truncated
     rows = await container.intelligence.upcoming_deadlines(principal, 3_650, doc_type="invoice")
     assert [r.field for r in rows] == ["due_date"]
