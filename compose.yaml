@@ -325,7 +325,7 @@ services:
   # Pulls the model once (with internet access), then exits; the model server itself runs
   # on the internal network only, so text sent to the local LLM cannot leave the host.
   ollama-pull:
-    image: ollama/ollama:0.35.0
+    image: ollama/ollama:0.35.1
     profiles: [ollama]
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -346,7 +346,7 @@ services:
     restart: "no"
 
   ollama:
-    image: ollama/ollama:0.35.0
+    image: ollama/ollama:0.35.1
     profiles: [ollama]
     volumes:
       - ollama-models:/root/.ollama
