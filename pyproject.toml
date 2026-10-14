@@ -52,6 +52,9 @@ dependencies = [
     # Observability
     "structlog>=25.1",
     "prometheus-client>=0.22",
+    # IANA time zones for zoneinfo on hosts without a system tz database (Windows,
+    # minimal images); without it every named zone, e.g. on the deadlines page, fails.
+    "tzdata>=2025.2",
 ]
 
 [project.optional-dependencies]

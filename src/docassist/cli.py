@@ -322,8 +322,13 @@ def cmd_worker(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # Accounts and organisations
 # --------------------------------------------------------------------------- #
-def _with_container[T](role: str, body: Callable[[Container], Coroutine[Any, Any, T]]) -> T:
-    settings = _load_settings()
+def _with_container[T](
+    role: str,
+    body: Callable[[Container], Coroutine[Any, Any, T]],
+    *,
+    settings: Settings | None = None,
+) -> T:
+    settings = settings or _load_settings()
 
     async def run() -> T:
         container = _build_container(settings, role)
@@ -531,7 +536,15 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             )
         return await evaluation.run_evaluation(container, principals)
 
-    report = _with_container("worker", body)
+    # The golden set asks ~30 questions back to back as a handful of personas. With the
+    # production limits (20 LLM calls per user per minute) the run throttled itself and the
+    # later questions failed as "rate_limited". This is an offline operator command against
+    # the eval-* organisations, so request rate limiting is off for this run only.
+    settings = _load_settings()
+    settings = settings.model_copy(
+        update={"rate_limit": settings.rate_limit.model_copy(update={"enabled": False})}
+    )
+    report = _with_container("worker", body, settings=settings)
     data = _jsonable(report)
     if args.output:
         Path(args.output).write_text(
