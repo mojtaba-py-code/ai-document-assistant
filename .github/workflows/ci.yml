@@ -106,7 +106,7 @@ jobs:
           --junitxml=junit.xml
       - name: Upload coverage and test report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-report-py${{ matrix.python }}
           path: |
@@ -249,7 +249,7 @@ jobs:
         if: always()
         run: docker compose down --volumes --remove-orphans
       - name: SBOM (SPDX JSON, uploaded as an artifact)
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: docassist:ci
           format: spdx-json
@@ -269,7 +269,7 @@ jobs:
       - name: Upload Trivy results to code scanning
         # Forked pull requests get a read-only token; the table gate below still applies.
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
