@@ -23,7 +23,7 @@
 # ------------------------------------------------------------------------------------------
 # Build stage
 # ------------------------------------------------------------------------------------------
-FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS builder
+FROM python:3.12-slim-bookworm@sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3 AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.21@sha256:a7aed3216253ee804de3e2d8afa5073baa1a177335345d43845cd4165e43b711 /uv /usr/local/bin/uv
 
@@ -65,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ------------------------------------------------------------------------------------------
 # Runtime stage
 # ------------------------------------------------------------------------------------------
-FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS runtime
+FROM python:3.12-slim-bookworm@sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3 AS runtime
 
 ARG WITH_OCR=false
 ARG VERSION=1.0.0
