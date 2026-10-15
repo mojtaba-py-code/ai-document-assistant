@@ -217,9 +217,17 @@ def test_parse_timezone_rejects(name: str) -> None:
         parse_timezone(name)
 
 
-def test_parse_timezone_iana_when_available() -> None:
+def test_parse_timezone_iana_without_a_system_tz_database() -> None:
+    # Windows and minimal images ship no IANA database, so zoneinfo falls back to the
+    # tzdata package. This test used to skip on such hosts, which hid the deadlines page
+    # failing with "Unknown time zone." for every named zone.
+    import zoneinfo
+
+    zoneinfo.reset_tzpath(to=[])
+    zoneinfo.ZoneInfo.clear_cache()
     try:
         zone = parse_timezone("Europe/Berlin")
-    except ValidationFailed:
-        pytest.skip("no tz database on this host")
-    assert datetime(2026, 7, 1, tzinfo=UTC).astimezone(zone).utcoffset() == timedelta(hours=2)
+        assert datetime(2026, 7, 1, tzinfo=UTC).astimezone(zone).utcoffset() == timedelta(hours=2)
+    finally:
+        zoneinfo.reset_tzpath()
+        zoneinfo.ZoneInfo.clear_cache()

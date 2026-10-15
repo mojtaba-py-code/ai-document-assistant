@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Audit details keep UUIDs as they are. A UUID whose middle groups are all digits matched
+  the phone-number pattern, so the PII filter could rewrite a document id in the audit chain
+  (and the search audit test failed whenever such an id came up).
+
 ## [1.0.0] — 2026-09-30
 
 First release.

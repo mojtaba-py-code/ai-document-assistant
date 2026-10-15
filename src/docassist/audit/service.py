@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -43,6 +44,14 @@ PLATFORM_CHAIN = uuid.UUID(int=0)
 GENESIS = hashlib.sha256(b"docassist-audit-genesis").digest()
 _MAX_DETAIL_STR = 500
 _MAX_DETAIL_KEYS = 40
+# Identifiers are recorded as they are. A UUID is never personal data, but its
+# digit groups can look like a phone number ("...-6012-7345-8123-..."), and
+# redacting them would corrupt the id kept in the audit chain.
+_UUID = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}")
+
+
+def _clean_text(value: str, limit: int) -> str:
+    return value if _UUID.fullmatch(value) else redact(value)[:limit]
 
 
 def _sanitize_details(details: dict[str, Any] | None) -> dict[str, Any]:
@@ -56,11 +65,11 @@ def _sanitize_details(details: dict[str, Any] | None) -> dict[str, Any]:
             break
         k = str(key)[:64]
         if isinstance(value, str):
-            clean[k] = redact(value)[:_MAX_DETAIL_STR]
+            clean[k] = _clean_text(value, _MAX_DETAIL_STR)
         elif isinstance(value, bool | int | float) or value is None:
             clean[k] = value
         elif isinstance(value, list | tuple):
-            clean[k] = [redact(str(v))[:200] if isinstance(v, str) else v for v in value[:50]]
+            clean[k] = [_clean_text(v, 200) if isinstance(v, str) else v for v in value[:50]]
         elif isinstance(value, dict):
             clean[k] = _sanitize_details(value)
         else:

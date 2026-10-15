@@ -185,6 +185,31 @@ def test_evidence_is_bounded_and_contains_the_match() -> None:
     assert evidence("abc", 0, 3) == "abc"
 
 
+def test_evidence_never_starts_or_ends_inside_a_word() -> None:
+    # The golden invoice chunk: "start - 150" lands inside "INV-2026-0142", and the quote
+    # used to begin with "42", which then failed verification against this same text.
+    from docassist.core.quotes import find_supported_span
+
+    text = (
+        "Invoice INV-2026-0142 Invoice Invoice INV-2026-0142 is issued by Northwind Components"
+        " Ltd. to Acme Corporation. The total amount due is 18,400.00 EUR. Payment is due on"
+        " 3 November 2026."
+    )
+    start = text.index("3 November 2026")
+    quote = evidence(text, start, start + len("3 November 2026"))
+    assert not quote.startswith("42")
+    assert find_supported_span(quote, text) is not None
+
+    def whole_words(snippet: str, source: str) -> bool:
+        at = source.find(snippet)
+        after = at + len(snippet)
+        return at >= 0 and not source[at - 1 : at].strip() and not source[after : after + 1].strip()
+
+    long_tail = "Due date: 8 November 2026 " + "Total due: EUR 40,000.00 " * 20
+    for begin in range(30):
+        assert whole_words(evidence(long_tail, begin + 10, begin + 25), long_tail), begin
+
+
 def test_hostile_input_is_fast_enough() -> None:
     import time
 

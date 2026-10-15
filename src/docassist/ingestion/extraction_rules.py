@@ -198,17 +198,28 @@ class FieldCandidate:
 # helpers
 # --------------------------------------------------------------------------- #
 def evidence(text: str, start: int, end: int) -> str:
-    """Verbatim context around ``[start, end)``: its line, trimmed to the evidence budget."""
+    """Verbatim context around ``[start, end)``: its line, trimmed to the evidence budget.
+
+    The window never starts or ends inside a word. A raw character offset could slice
+    ``INV-2026-0142`` into ``42``, a token the source does not contain, so the quote later
+    failed verification against its own chunk and the citation was rejected.
+    """
     line_start = text.rfind("\n", 0, start) + 1
     line_end = text.find("\n", end)
     line_end = len(text) if line_end < 0 else line_end
     left = max(line_start, start - 150)
     right = min(line_end, end + 150)
-    snippet = text[left:right]
-    if len(snippet) > MAX_EVIDENCE_CHARS:
+    if right - left > MAX_EVIDENCE_CHARS:
         room = max(0, MAX_EVIDENCE_CHARS - (end - start)) // 2
-        snippet = text[max(left, start - room) : min(right, end + room)]
-    return " ".join(snippet.split())[:MAX_EVIDENCE_CHARS]
+        left, right = max(left, start - room), min(right, end + room)
+    while left < start and left > line_start and not text[left - 1].isspace():
+        left += 1
+    while right > end and right < line_end and not text[right].isspace():
+        right -= 1
+    quote = " ".join(text[left:right].split())
+    if len(quote) > MAX_EVIDENCE_CHARS:
+        quote = quote[:MAX_EVIDENCE_CHARS].rsplit(" ", 1)[0]
+    return quote
 
 
 def _clause_window(text: str, start: int) -> tuple[str, int]:

@@ -585,11 +585,15 @@ def test_evaluate_loads_the_golden_corpus_and_reports_metrics(
     report_path = tmp_path / "eval.json"
     code = run(["evaluate", "--output", str(report_path)])
     captured = capsys.readouterr()
-    assert code in {0, cli.EXIT_VERIFY_FAILED}, captured.err
+    # The real pipeline (sandboxed parsing, hybrid search, default rate limits) must meet
+    # its own quality bar. This used to accept EXIT_VERIFY_FAILED, which hid the run
+    # throttling itself ("rate_limited") and evidence quotes cut mid-word.
+    assert code == 0, captured.err
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert set(report["metrics"]) >= set(evaluation.DEFAULT_THRESHOLDS)
     assert len(report["results"]) == len(evaluation.GOLDEN_DATASET.questions)
-    assert ("evaluation passed" in captured.out) == (code == 0)
+    assert "evaluation passed" in captured.out
+    assert not [r["id"] for r in report["results"] if r["error"]]
     orgs = _query(
         test_database.admin_url, "SELECT slug FROM organizations WHERE slug LIKE 'eval-%'"
     )
