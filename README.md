@@ -73,13 +73,13 @@ flowchart LR
     API -.optional.-> Q[(Qdrant)]
 ```
 
-* [docs/architecture.md](docs/architecture.md) — requirements, flows and architecture decisions (Level 1)
-* [docs/threat-model.md](docs/threat-model.md) — STRIDE, threat register, OWASP API / Top 10 / LLM Top 10 (Level 2)
+* [docs/architecture.md](docs/architecture.md) — requirements, flows and architecture decisions
+* [docs/threat-model.md](docs/threat-model.md) — STRIDE, threat register, OWASP API / Top 10 / LLM Top 10
 * [docs/security-architecture.md](docs/security-architecture.md) — every control by layer, security principles
 * [docs/operations.md](docs/operations.md) — backup/restore, retention, key rotation, incident response, monitoring
 * [docs/api.md](docs/api.md) — endpoints and error codes
-* [docs/guide/](docs/guide/README.md) — the 36-level build guide
-* [docs/security-audit.md](docs/security-audit.md) — final security assessment (Level 36)
+* [docs/guide/](docs/guide/README.md) — build guide: how each part was built, tested and secured
+* [docs/security-audit.md](docs/security-audit.md) — final security assessment
 
 ## Quick start
 
