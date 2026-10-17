@@ -9,6 +9,7 @@ user only ever sees the documents they are entitled to.
 [![CodeQL](https://github.com/mojtaba-py-code/ai-document-assistant/actions/workflows/codeql.yml/badge.svg)](https://github.com/mojtaba-py-code/ai-document-assistant/actions/workflows/codeql.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![Hire me on Freelancer](https://img.shields.io/badge/Hire%20me%20on-Freelancer-29B2FE?style=flat)](https://www.freelancer.com/hireme/mojtaba2025py)
 
 ---
 
